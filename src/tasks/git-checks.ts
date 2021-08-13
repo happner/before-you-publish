@@ -2,6 +2,7 @@ import assert from 'assert';
 import Listr from 'listr';
 import semver from 'semver';
 import execa from 'execa';
+import readPkgUp from 'read-pkg-up';
 
 const isGitRepo = async (): Promise<boolean> => {
 	try {
@@ -56,6 +57,19 @@ const gitOutOfSyncWithUpstream = async (branchName: string) => {
 
 const gitChecks = new Listr([
 	{
+		title: 'Detect package.json',
+		async task(context, task) {
+			task.title = 'Detecting package.json...';
+			const detectedPackageJson = await readPkgUp();
+			assert(detectedPackageJson, 'package.json not found');
+			const { packageJson, path } = detectedPackageJson;
+			context.packageJson = packageJson;
+			context.cleanedVersion = semver.clean(packageJson.version, { loose: true });
+			context.isPrerelease = context.cleanedVersion.includes('-');
+			task.title = `Found package.json at ${path}`;
+		},
+	},
+	{
 		title: 'Verify Git version',
 		async task(context, task) {
 			task.title = 'Verifying Git version...';
@@ -81,8 +95,11 @@ const gitChecks = new Listr([
 		},
 	},
 	{
-		title: 'Verify current branch is release branch',
+		title: 'Verify current branch is master branch if version has no prerelease suffix',
 		async task(context, task) {
+			if (context.isPrerelease) {
+				return;
+			}
 			task.title = 'Verifying current branch is release branch...';
 			const currentBranchName = await getGitBranchName();
 			assert(
@@ -91,6 +108,24 @@ const gitChecks = new Listr([
 			);
 			task.title = `Current branch is "${context.releaseBranch}"`;
 			context.gitCurrentBranchname = currentBranchName;
+		},
+	},
+	{
+		title: 'Verify the package production dependencies are not tags or prerelease versions if version has no prerelease suffix',
+		async task(context, task) {
+			if (context.isPrerelease) {
+				return;
+			}
+			task.title = 'Verifying the package production dependencies...';
+
+			for (const dependencyName of Object.keys(context.packageJson.dependencies)) {
+				const cleanedVersion = semver.clean(context.packageJson.dependencies[dependencyName]);
+				assert(
+					// eslint-disable-next-line no-eq-null
+					cleanedVersion == null || cleanedVersion.includes('-'),
+					`Found pre-release dependency: ${dependencyName}`,
+				);
+			}
 		},
 	},
 	{

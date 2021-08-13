@@ -11,7 +11,7 @@ const cli = cac('before-you-publish')
 		default: 'master',
 	})
 	.option('--required-npm', 'Required semver range for npm', {
-		default: '>=6.8.0',
+		default: '>=7.18.1',
 	})
 	.option('--required-git', 'Required semver range for Git', {
 		default: '>=2.11.0',
